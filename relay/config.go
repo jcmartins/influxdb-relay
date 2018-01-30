@@ -52,6 +52,8 @@ type HTTPOutputConfig struct {
 	// Skip TLS verification in order to use self signed certificate.
 	// WARNING: It's insecure. Use it only for developing and don't use in production.
 	SkipTLSVerification bool `toml:"skip-tls-verification"`
+
+	MaxIdleConnsPerHost int `toml:"max-idle-conns"`
 }
 
 type UDPConfig struct {

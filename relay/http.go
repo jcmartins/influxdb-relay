@@ -38,6 +38,7 @@ const (
 	DefaultHTTPTimeout      = 10 * time.Second
 	DefaultMaxDelayInterval = 10 * time.Second
 	DefaultBatchSizeKB      = 512
+	DefaultMaxIdleConnsPerHost = 10000
 
 	KB = 1024
 	MB = 1024 * KB
@@ -294,13 +295,15 @@ type simplePoster struct {
 	location string
 }
 
-func newSimplePoster(location string, timeout time.Duration, skipTLSVerification bool) *simplePoster {
+func newSimplePoster(location string, timeout time.Duration, skipTLSVerification bool, maxIdleConnsPerHost int) *simplePoster {
 	// Configure custom transport for http.Client
 	// Used for support skip-tls-verification option
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: skipTLSVerification,
 		},
+		DisableKeepAlives:   false,
+		MaxIdleConnsPerHost: maxIdleConnsPerHost,
 	}
 
 	return &simplePoster{
@@ -366,7 +369,12 @@ func newHTTPBackend(cfg *HTTPOutputConfig) (*httpBackend, error) {
 		timeout = t
 	}
 
-	var p poster = newSimplePoster(cfg.Location, timeout, cfg.SkipTLSVerification)
+	maxIdleConnsPerHost := DefaultMaxIdleConnsPerHost
+	if cfg.MaxIdleConnsPerHost!= 0 {
+		maxIdleConnsPerHost = cfg.MaxIdleConnsPerHost
+	}
+
+	var p poster = newSimplePoster(cfg.Location, timeout, cfg.SkipTLSVerification, maxIdleConnsPerHost)
 
 	// If configured, create a retryBuffer per backend.
 	// This way we serialize retries against each backend.
