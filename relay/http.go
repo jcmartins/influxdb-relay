@@ -120,17 +120,17 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 	}
 
-	if r.URL.Path != "/write" {
-		jsonError(w, http.StatusNotFound, "invalid write endpoint")
+	if !(r.URL.Path == "/write" || r.URL.Path == "/query") {
+		jsonError(w, http.StatusNotFound, "invalid write or query endpoint")
 		return
 	}
 
-	if r.Method != "POST" {
-		w.Header().Set("Allow", "POST")
+	if !(r.Method == "POST" || r.Method == "GET") {
+		w.Header().Set("Allow", "POST & GET")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
 		} else {
-			jsonError(w, http.StatusMethodNotAllowed, "invalid write method")
+			jsonError(w, http.StatusMethodNotAllowed, "invalid write or query method")
 		}
 		return
 	}
@@ -140,6 +140,35 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// fail early if we're missing the database
 	if queryParams.Get("db") == "" {
 		jsonError(w, http.StatusBadRequest, "missing parameter: db")
+		return
+	}
+
+	if r.Method == "GET" && r.URL.Path == "/query" {
+		if queryParams.Get("q") == "" {
+			jsonError(w, http.StatusBadRequest, "missing parameter: q")
+			return
+		}
+
+		// 查找相应分区中一个正常的InfluxDB节点查询
+		for _, b := range h.backends {
+
+			resp, err := b.get(queryParams.Encode())
+			// err不为空时下一个节点查
+			if err != nil {
+				log.Printf("Problem getting to relay %q backend %q: %v", h.Name(), b.name, err)
+				continue
+			} else {
+				if resp.StatusCode / 100 == 5 {
+					log.Printf("5xx response for relay %q backend %q: %v", h.Name(), b.name, resp.StatusCode)
+				}
+			}
+			resp.Write(w)
+			return
+
+
+		}
+		// 没有匹配
+		jsonError(w, http.StatusBadRequest, "no influxdb node to query")
 		return
 	}
 
@@ -290,10 +319,20 @@ type poster interface {
 	post([]byte, string, string) (*responseData, error)
 }
 
+type geter interface {
+	get(string) (*responseData, error)
+}
+
 type simplePoster struct {
 	client   *http.Client
 	location string
 }
+
+type simpleGeter struct {
+	client   *http.Client
+	location string
+}
+
 
 func newSimplePoster(location string, timeout time.Duration, skipTLSVerification bool, maxIdleConnsPerHost int) *simplePoster {
 	// Configure custom transport for http.Client
@@ -311,7 +350,24 @@ func newSimplePoster(location string, timeout time.Duration, skipTLSVerification
 			Timeout:   timeout,
 			Transport: transport,
 		},
-		location: location,
+		location: location + "/write",
+	}
+}
+
+func newSimpleGeter(location string, timeout time.Duration, skipTLSVerification bool, maxIdleConnsPerHost int) *simpleGeter {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: skipTLSVerification,
+		},
+		MaxIdleConnsPerHost: maxIdleConnsPerHost,
+	}
+
+	return &simpleGeter{
+		client: &http.Client{
+			Timeout:   timeout,
+			Transport: transport,
+		},
+		location: location + "/query",
 	}
 }
 
@@ -350,8 +406,41 @@ func (b *simplePoster) post(buf []byte, query string, auth string) (*responseDat
 	}, nil
 }
 
+// 发送get请求
+func (b *simpleGeter) get(query string) (*responseData, error) {
+
+	req, err := http.NewRequest("GET", b.location, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.URL.RawQuery = query
+
+	resp, err := b.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = resp.Body.Close(); err != nil {
+		return nil, err
+	}
+
+	return &responseData{
+		ContentType:     resp.Header.Get("Conent-Type"),
+		ContentEncoding: resp.Header.Get("Conent-Encoding"),
+		StatusCode:      resp.StatusCode,
+		Body:            data,
+	}, nil
+}
+
 type httpBackend struct {
 	poster
+	geter
 	name string
 }
 
@@ -375,6 +464,7 @@ func newHTTPBackend(cfg *HTTPOutputConfig) (*httpBackend, error) {
 	}
 
 	var p poster = newSimplePoster(cfg.Location, timeout, cfg.SkipTLSVerification, maxIdleConnsPerHost)
+	var g geter = newSimpleGeter(cfg.Location, timeout, cfg.SkipTLSVerification, maxIdleConnsPerHost)
 
 	// If configured, create a retryBuffer per backend.
 	// This way we serialize retries against each backend.
@@ -398,6 +488,7 @@ func newHTTPBackend(cfg *HTTPOutputConfig) (*httpBackend, error) {
 
 	return &httpBackend{
 		poster: p,
+		geter: g,
 		name:   cfg.Name,
 	}, nil
 }

@@ -6,8 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
-
-	"github.com/influxdata/influxdb-relay/relay"
+	"github.com/yxxcoder/influxdb-relay/relay"
 )
 
 var (
