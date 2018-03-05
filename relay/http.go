@@ -399,8 +399,8 @@ func (b *simplePoster) post(buf []byte, query string, auth string) (*responseDat
 	}
 
 	return &responseData{
-		ContentType:     resp.Header.Get("Conent-Type"),
-		ContentEncoding: resp.Header.Get("Conent-Encoding"),
+		ContentType:     resp.Header.Get("Content-Type"),
+		ContentEncoding: resp.Header.Get("Content-Encoding"),
 		StatusCode:      resp.StatusCode,
 		Body:            data,
 	}, nil
@@ -431,8 +431,8 @@ func (b *simpleGeter) get(query string) (*responseData, error) {
 	}
 
 	return &responseData{
-		ContentType:     resp.Header.Get("Conent-Type"),
-		ContentEncoding: resp.Header.Get("Conent-Encoding"),
+		ContentType:     resp.Header.Get("Content-Type"),
+		ContentEncoding: resp.Header.Get("Content-Encoding"),
 		StatusCode:      resp.StatusCode,
 		Body:            data,
 	}, nil
