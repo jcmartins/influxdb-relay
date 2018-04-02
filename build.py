@@ -125,13 +125,13 @@ def go_get(branch, update=False, no_uncommitted=False):
     if local_changes() and no_uncommitted:
         logging.error("There are uncommitted changes in the current directory.")
         return False
-    if not check_path_for("gdm"):
-        logging.info("Downloading `gdm`...")
-        get_command = "go get github.com/sparrc/gdm"
+    if not check_path_for("godep"):
+        logging.info("Downloading `godep`...")
+        get_command = "go get github.com/tools/godep"
         run(get_command)
-    logging.info("Retrieving dependencies with `gdm`...")
+    logging.info("Retrieving dependencies with `godep`...")
     sys.stdout.flush()
-    run("{}/bin/gdm restore -v".format(os.environ.get("GOPATH")))
+    run("{}/bin/godep restore -v".format(os.environ.get("GOPATH")))
     return True
 
 def run(command, allow_failure=False, shell=False):
